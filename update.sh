@@ -1,5 +1,7 @@
 #!/bin/bash
 
+shopt -s nocasematch
+
 #Checking if script is running at root.
 if [ "$EUID" -ne 0 ]
   then echo "Please run as root"
@@ -10,33 +12,46 @@ fi
 cat /etc/apt/sources.list
 
 #Checking if you want to update repos
-echo "Do you want to update repos continue?(yes/no)"
+echo "Do you want to update repos continue?(Y/N)"
 read input
-if [ "$input" == "yes" ]
+if [[ "{$input}" == *"y"* ]]
 then
 apt update 
 fi
-if [ "$input" == "no" ]
+if [[ "{$input}" == *"n"* ]]
 then exit 1
 echo "continue"
 fi
 #Checking if you want to upgrade packages
-echo "Do you want to upgrade packages continue?(yes/no)"
-if [ "$input" == "yes" ]
+echo "Do you want to upgrade packages continue?(Y/N)"
+read input
+if [[ "{$input}" == *"y"* ]]
 then
-apt upgrade
+apt -y upgrade
 fi
-if [ "$input" == "no" ]
+if [[ "{$input}" == *"n"* ]]
+then exit 1
+echo "continue"
+fi
+#Checking if you want to upgrade the distribution?
+echo "Do you want to upgrade packages continue?(Y/N)"
+read input
+if [[ "{$input}" == *"y"* ]]
+then
+apt -y dist-upgrade
+fi
+if [[ "{$input}" == *"n"* ]]
 then exit 1
 echo "continue"
 fi
 #checking if you want to remove packages
-echo "Do you want to auto remove packages?(yes/no)"
-if [ "$input" == "yes" ]
+echo "Do you want to auto remove packages?(Y/N)"
+read input
+if [[ "{$input}" == *"y"* ]]
 then
-apt-get autoremove
+apt-get -y autoremove
 fi
-if [ "$input" == "no" ]
+if [[ "{$input}" == *"n"* ]]
 then exit 1
 echo "continue"
 fi
