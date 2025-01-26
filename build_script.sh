@@ -1,105 +1,118 @@
 #!/bin/bash
-# This script is designed to pull down my most used tools to quickly build out my Linux system
+# This script sets up essential tools for Linux pentesting and system preparation
 
-echo "Welcome to the Build Script"
+set -e  # Exit immediately if a command exits with a non-zero status
 
-# Checking if script is running as root.
+log_file="/var/log/build_script.log"
+echo "Welcome to the Build Script" | tee -a "$log_file"
+
+# Check if the script is running as root
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root"
+  echo "Please run this script as root." | tee -a "$log_file"
   exit 1
 fi
-echo "Root check passed"
+
+echo "Root check passed" | tee -a "$log_file"
 
 # Update and upgrade the system
-echo "=================================="
-echo "Updating and Upgrading System"
-echo "=================================="
-sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get dist-upgrade -y && sudo apt autoremove -y
+echo "==================================" | tee -a "$log_file"
+echo "Updating and Upgrading System" | tee -a "$log_file"
+echo "==================================" | tee -a "$log_file"
+apt-get update && apt-get upgrade -y && apt-get dist-upgrade -y && apt-get autoremove -y | tee -a "$log_file"
 
 # Install common tools
-echo "=================================="
-echo "Installing Common Tools"
-echo "=================================="
-sudo apt-get install -y htop iftop python3-pip python2 seclists terminator rubygems
+echo "==================================" | tee -a "$log_file"
+echo "Installing Common Tools" | tee -a "$log_file"
+echo "==================================" | tee -a "$log_file"
+apt-get install -y htop iftop python3-pip python2 seclists terminator rubygems | tee -a "$log_file"
 
 # Create tools directory
-echo "Creating tool directories"
+echo "Creating tools directory" | tee -a "$log_file"
 mkdir -p /opt/tools
-cd /opt/tools
+cd /opt/tools || exit
 
 # Install pentest tools
-echo "=================================="
-echo "Installing Pentest Tools"
-echo "=================================="
+echo "==================================" | tee -a "$log_file"
+echo "Installing Pentest Tools" | tee -a "$log_file"
+echo "==================================" | tee -a "$log_file"
 
-# Enum4linux-ng
+# Function to clone and check git repositories
+git_clone() {
+  local repo_url=$1
+  local dest_dir=$(basename "$repo_url" .git)
+  if [ ! -d "$dest_dir" ]; then
+    git clone "$repo_url" | tee -a "$log_file"
+  else
+    echo "$dest_dir already exists, skipping clone." | tee -a "$log_file"
+  fi
+}
+
+# Function to download files safely
+download_file() {
+  local url=$1
+  local filename=$(basename "$url")
+  if [ ! -f "$filename" ]; then
+    wget "$url" -q --show-progress | tee -a "$log_file"
+  else
+    echo "$filename already exists, skipping download." | tee -a "$log_file"
+  fi
+}
+
+# Install tools
 echo "Installing Enum4linux-NG"
-sudo apt-get install -y smbclient python3-ldap3 python3-yaml python3-impacket
-git clone https://github.com/cddmp/enum4linux-ng.git
+apt-get install -y smbclient python3-ldap3 python3-yaml python3-impacket | tee -a "$log_file"
+git_clone https://github.com/cddmp/enum4linux-ng.git
 
-# testssl
 echo "Installing testssl"
-git clone --depth 1 https://github.com/drwetter/testssl.sh.git
+git_clone https://github.com/drwetter/testssl.sh.git
 
-# PowerSploit
 echo "Installing PowerSploit"
-git clone https://github.com/PowerShellMafia/PowerSploit.git
+git_clone https://github.com/PowerShellMafia/PowerSploit.git
 
-# Impacket
 echo "Installing Impacket"
-git clone https://github.com/CoreSecurity/impacket.git
+git_clone https://github.com/CoreSecurity/impacket.git
 cd impacket
-python3 setup.py install
+python3 setup.py install | tee -a "$log_file"
 cd ..
 
-# WinPEAS and LinPEAS
 echo "Installing WinPEAS and LinPEAS"
-wget https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/linpeas.sh
-wget https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx64.exe
-wget https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx86.exe
+download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/linpeas.sh
+download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx64.exe
+download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx86.exe
 
-# LinEnum
 echo "Installing LinEnum"
-git clone https://github.com/rebootuser/LinEnum.git
+git_clone https://github.com/rebootuser/LinEnum.git
 
-# Responder
 echo "Installing Responder"
-git clone https://github.com/lgandx/Responder.git
+git_clone https://github.com/lgandx/Responder.git
 
-# dnscan
 echo "Installing dnscan"
-git clone https://github.com/rbsec/dnscan.git
-pip3 install -r dnscan/requirements.txt
+git_clone https://github.com/rbsec/dnscan.git
+pip3 install -r dnscan/requirements.txt | tee -a "$log_file"
 
-# evil-winrm
 echo "Installing evil-winrm"
-gem install evil-winrm
+gem install evil-winrm | tee -a "$log_file"
 
-# Wifite2
 echo "Installing Wifite2"
-git clone https://github.com/kimocoder/wifite2.git
-pip3 install -r wifite2/requirements.txt
+git_clone https://github.com/kimocoder/wifite2.git
+pip3 install -r wifite2/requirements.txt | tee -a "$log_file"
 
-# AutoRecon
 echo "Installing AutoRecon"
-python3 -m pip install git+https://github.com/Tib3rius/AutoRecon.git
+python3 -m pip install git+https://github.com/Tib3rius/AutoRecon.git | tee -a "$log_file"
 
-# CrackMapExec
 echo "Installing CrackMapExec"
-sudo apt install -y crackmapexec
+apt-get install -y crackmapexec | tee -a "$log_file"
 
-# SecLists
 echo "Installing SecLists"
-git clone https://github.com/danielmiessler/SecLists.git
+git_clone https://github.com/danielmiessler/SecLists.git
 
-# Fierce
 echo "Installing Fierce"
-sudo apt install -y fierce
+apt-get install -y fierce | tee -a "$log_file"
 
-# FinalRecon
 echo "Installing FinalRecon"
-git clone https://github.com/thewhiteh4t/FinalRecon.git
+git_clone https://github.com/thewhiteh4t/FinalRecon.git
 cd FinalRecon
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt | tee -a "$log_file"
+cd ..
 
-echo "Build Script Complete"
+echo "Build Script Complete" | tee -a "$log_file"
