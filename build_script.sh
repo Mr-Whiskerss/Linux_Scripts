@@ -1,5 +1,6 @@
 #!/bin/bash
-# This script sets up essential tools for Linux pentesting and system preparation
+# This script sets up essential tools for Linux pentesting and system preparation when on a new build or need to get something up and ready quick. Please run as root. 
+# Version 3.0
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -31,16 +32,12 @@ echo "Creating tools directory" | tee -a "$log_file"
 mkdir -p /opt/tools
 cd /opt/tools || exit
 
-# Install pentest tools
-echo "==================================" | tee -a "$log_file"
-echo "Installing Pentest Tools" | tee -a "$log_file"
-echo "==================================" | tee -a "$log_file"
-
 # Function to clone and check git repositories
 git_clone() {
   local repo_url=$1
   local dest_dir=$(basename "$repo_url" .git)
   if [ ! -d "$dest_dir" ]; then
+    echo "Cloning $repo_url" | tee -a "$log_file"
     git clone "$repo_url" | tee -a "$log_file"
   else
     echo "$dest_dir already exists, skipping clone." | tee -a "$log_file"
@@ -52,64 +49,84 @@ download_file() {
   local url=$1
   local filename=$(basename "$url")
   if [ ! -f "$filename" ]; then
+    echo "Downloading $url" | tee -a "$log_file"
     wget "$url" -q --show-progress | tee -a "$log_file"
   else
     echo "$filename already exists, skipping download." | tee -a "$log_file"
   fi
 }
 
-# Install tools
-echo "Installing Enum4linux-NG"
+# Install pentest tools
+echo "==================================" | tee -a "$log_file"
+echo "Installing Pentest Tools" | tee -a "$log_file"
+echo "==================================" | tee -a "$log_file"
+
+# Enum4linux-NG
+echo "Installing Enum4linux-NG" | tee -a "$log_file"
 apt-get install -y smbclient python3-ldap3 python3-yaml python3-impacket | tee -a "$log_file"
 git_clone https://github.com/cddmp/enum4linux-ng.git
 
-echo "Installing testssl"
+# Testssl
+echo "Installing testssl" | tee -a "$log_file"
 git_clone https://github.com/drwetter/testssl.sh.git
 
-echo "Installing PowerSploit"
+# PowerSploit
+echo "Installing PowerSploit" | tee -a "$log_file"
 git_clone https://github.com/PowerShellMafia/PowerSploit.git
 
-echo "Installing Impacket"
+# Impacket
+echo "Installing Impacket" | tee -a "$log_file"
 git_clone https://github.com/CoreSecurity/impacket.git
 cd impacket
 python3 setup.py install | tee -a "$log_file"
 cd ..
 
-echo "Installing WinPEAS and LinPEAS"
+# WinPEAS and LinPEAS
+echo "Installing WinPEAS and LinPEAS" | tee -a "$log_file"
 download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/linpeas.sh
 download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx64.exe
 download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx86.exe
 
-echo "Installing LinEnum"
+# LinEnum
+echo "Installing LinEnum" | tee -a "$log_file"
 git_clone https://github.com/rebootuser/LinEnum.git
 
-echo "Installing Responder"
+# Responder
+echo "Installing Responder" | tee -a "$log_file"
 git_clone https://github.com/lgandx/Responder.git
 
-echo "Installing dnscan"
+# DNScan
+echo "Installing dnscan" | tee -a "$log_file"
 git_clone https://github.com/rbsec/dnscan.git
 pip3 install -r dnscan/requirements.txt | tee -a "$log_file"
 
-echo "Installing evil-winrm"
+# Evil-WinRM
+echo "Installing evil-winrm" | tee -a "$log_file"
 gem install evil-winrm | tee -a "$log_file"
 
-echo "Installing Wifite2"
+# Wifite2
+echo "Installing Wifite2" | tee -a "$log_file"
 git_clone https://github.com/kimocoder/wifite2.git
 pip3 install -r wifite2/requirements.txt | tee -a "$log_file"
 
-echo "Installing AutoRecon"
+# AutoRecon
+echo "Installing AutoRecon" | tee -a "$log_file"
 python3 -m pip install git+https://github.com/Tib3rius/AutoRecon.git | tee -a "$log_file"
 
-echo "Installing CrackMapExec"
+# CrackMapExec
+echo "Installing CrackMapExec" | tee -a "$log_file"
 apt-get install -y crackmapexec | tee -a "$log_file"
 
-echo "Installing SecLists"
+# SecLists
+echo "Installing SecLists" | tee -a "$log_file"
 git_clone https://github.com/danielmiessler/SecLists.git
 
-echo "Installing Fierce"
+# Fierce
+echo "Installing Fierce" | tee -a "$log_file"
 apt-get install -y fierce | tee -a "$log_file"
 
-echo "Installing FinalRecon"
+# FinalRecon
+echo "Installing FinalRecon" | tee -a "$log_file"
 git_clone https://github.com/thewhiteh4t/FinalRecon.git
 cd FinalRecon
 pip3 install -r requirements.txt | tee -a "$log_file"
