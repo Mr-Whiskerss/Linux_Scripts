@@ -1,4 +1,5 @@
-![image](https://github.com/user-attachments/assets/5013c26e-a5b4-4fd1-85da-3b5a580ee581)
+![tux_script_logo_small](https://github.com/user-attachments/assets/ff22afb6-ff0b-4d84-967f-6d16946c0549)
+
 
 
 
