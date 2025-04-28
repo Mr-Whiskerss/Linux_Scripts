@@ -1,3 +1,7 @@
+
+![image](https://github.com/user-attachments/assets/2b210a35-41db-4c2e-9863-28fa43b1264b)
+
+
 Linux Scripts
 Welcome to the Linux Scripts repository I have created over my time as a pen tester.
 This is a collection of Bash scripts designed to automate common tasks encountered while working with Linux systems, particularly in penetration testing and system administration.
