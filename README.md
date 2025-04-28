@@ -1,5 +1,5 @@
 
-![image](https://github.com/user-attachments/assets/2b210a35-41db-4c2e-9863-28fa43b1264b)
+
 
 
 Linux Scripts
