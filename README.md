@@ -5,6 +5,7 @@ This is a collection of Bash scripts designed to automate common tasks encounter
 Feel free to clone, use, modify, and contribute to these scripts!
 
 📂 Repository Contents
+
 *Network_ConfigurationV3.sh*
 Configure network settings easily with this script, including IP assignment and DNS setup. This is a great script for pen test exams or on site testing when you need to custom set your IP and DNS.
 
