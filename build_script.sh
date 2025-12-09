@@ -1,135 +1,261 @@
 #!/bin/bash
-# This script sets up essential tools for Linux pentesting and system preparation when on a new build or need to get something up and ready quick. Please run as root. 
-# Version 3.0
+# This script sets up essential tools for Linux pentesting and system preparation when on a new build or need to get something up and ready quick. Please run as root.
+# Version 4.0
 
 set -e  # Exit immediately if a command exits with a non-zero status
+set -o pipefail  # Catch errors in pipelines
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
 log_file="/var/log/build_script.log"
-echo "Welcome to the Build Script" | tee -a "$log_file"
+
+# Logging function
+log() {
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$log_file"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$log_file"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$log_file"
+}
+
+log "Welcome to the Build Script v4.0"
 
 # Check if the script is running as root
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run this script as root." | tee -a "$log_file"
+  log_error "Please run this script as root."
   exit 1
 fi
 
-echo "Root check passed" | tee -a "$log_file"
+log "Root check passed"
+
+# Check if git is installed
+if ! command -v git &>/dev/null; then
+    log "Git not found, installing..."
+    apt-get update
+    apt-get install -y git
+fi
 
 # Update and upgrade the system
-echo "==================================" | tee -a "$log_file"
-echo "Updating and Upgrading System" | tee -a "$log_file"
-echo "==================================" | tee -a "$log_file"
-apt-get update && apt-get upgrade -y && apt-get dist-upgrade -y && apt-get autoremove -y | tee -a "$log_file"
+log "==================================="
+log "Updating and Upgrading System"
+log "==================================="
+if apt-get update && apt-get upgrade -y && apt-get dist-upgrade -y && apt-get autoremove -y; then
+    log "System update completed successfully"
+else
+    log_error "System update failed"
+    exit 1
+fi
 
 # Install common tools
-echo "==================================" | tee -a "$log_file"
-echo "Installing Common Tools" | tee -a "$log_file"
-echo "==================================" | tee -a "$log_file"
-apt-get install -y htop iftop python3-pip python2 seclists terminator rubygems | tee -a "$log_file"
+log "==================================="
+log "Installing Common Tools"
+log "==================================="
+COMMON_TOOLS="htop iftop python3-pip seclists terminator rubygems curl wget"
+
+# Python 2 is EOL, only install if available (might not be in newer distros)
+if apt-cache show python2 &>/dev/null; then
+    COMMON_TOOLS="$COMMON_TOOLS python2"
+    log_warning "Python 2 is deprecated and may not be available in future releases"
+fi
+
+if apt-get install -y $COMMON_TOOLS; then
+    log "Common tools installed successfully"
+else
+    log_error "Failed to install some common tools"
+    exit 1
+fi
 
 # Create tools directory
-echo "Creating tools directory" | tee -a "$log_file"
+log "Creating tools directory at /opt/tools"
 mkdir -p /opt/tools
-cd /opt/tools || exit
+cd /opt/tools || exit 1
 
 # Function to clone and check git repositories
 git_clone() {
-  local repo_url=$1
-  local dest_dir=$(basename "$repo_url" .git)
-  if [ ! -d "$dest_dir" ]; then
-    echo "Cloning $repo_url" | tee -a "$log_file"
-    git clone "$repo_url" | tee -a "$log_file"
-  else
-    echo "$dest_dir already exists, skipping clone." | tee -a "$log_file"
-  fi
+    local repo_url=$1
+    local dest_dir
+    dest_dir=$(basename "$repo_url" .git)
+
+    if [ ! -d "$dest_dir" ]; then
+        log "Cloning $repo_url"
+        if git clone --depth 1 "$repo_url" 2>&1 | tee -a "$log_file"; then
+            log "Successfully cloned $dest_dir"
+            return 0
+        else
+            log_error "Failed to clone $repo_url"
+            return 1
+        fi
+    else
+        log_warning "$dest_dir already exists, skipping clone"
+        return 0
+    fi
 }
 
 # Function to download files safely
 download_file() {
-  local url=$1
-  local filename=$(basename "$url")
-  if [ ! -f "$filename" ]; then
-    echo "Downloading $url" | tee -a "$log_file"
-    wget "$url" -q --show-progress | tee -a "$log_file"
-  else
-    echo "$filename already exists, skipping download." | tee -a "$log_file"
-  fi
+    local url=$1
+    local filename
+    filename=$(basename "$url")
+
+    if [ ! -f "$filename" ]; then
+        log "Downloading $filename from $url"
+        if wget "$url" -q --show-progress 2>&1 | tee -a "$log_file"; then
+            log "Successfully downloaded $filename"
+            return 0
+        else
+            log_error "Failed to download $filename"
+            return 1
+        fi
+    else
+        log_warning "$filename already exists, skipping download"
+        return 0
+    fi
+}
+
+# Function to safely install pip packages
+pip_install() {
+    local package=$1
+    log "Installing Python package: $package"
+    # Use --break-system-packages for newer systems that require it
+    if python3 -m pip install "$package" 2>&1 | tee -a "$log_file"; then
+        log "Successfully installed $package"
+        return 0
+    else
+        log_warning "Trying with --break-system-packages flag"
+        if python3 -m pip install --break-system-packages "$package" 2>&1 | tee -a "$log_file"; then
+            log "Successfully installed $package"
+            return 0
+        else
+            log_error "Failed to install $package"
+            return 1
+        fi
+    fi
 }
 
 # Install pentest tools
-echo "==================================" | tee -a "$log_file"
-echo "Installing Pentest Tools" | tee -a "$log_file"
-echo "==================================" | tee -a "$log_file"
+log "==================================="
+log "Installing Pentest Tools"
+log "==================================="
 
 # Enum4linux-NG
-echo "Installing Enum4linux-NG" | tee -a "$log_file"
-apt-get install -y smbclient python3-ldap3 python3-yaml python3-impacket | tee -a "$log_file"
+log "Installing Enum4linux-NG dependencies and tool"
+apt-get install -y smbclient python3-ldap3 python3-yaml python3-impacket 2>&1 | tee -a "$log_file" || log_warning "Some enum4linux-ng dependencies may have failed"
 git_clone https://github.com/cddmp/enum4linux-ng.git
 
 # Testssl
-echo "Installing testssl" | tee -a "$log_file"
+log "Installing testssl"
 git_clone https://github.com/drwetter/testssl.sh.git
 
 # PowerSploit
-echo "Installing PowerSploit" | tee -a "$log_file"
+log "Installing PowerSploit"
 git_clone https://github.com/PowerShellMafia/PowerSploit.git
 
-# Impacket
-echo "Installing Impacket" | tee -a "$log_file"
-git_clone https://github.com/CoreSecurity/impacket.git
-cd impacket
-python3 setup.py install | tee -a "$log_file"
-cd ..
+# Impacket (using updated fortra repository)
+log "Installing Impacket"
+if git_clone https://github.com/fortra/impacket.git; then
+    cd impacket || exit 1
+    if pip_install .; then
+        log "Impacket installed successfully"
+    else
+        log_error "Impacket installation failed"
+    fi
+    cd ..
+else
+    log_error "Failed to clone Impacket repository"
+fi
 
-# WinPEAS and LinPEAS
-echo "Installing WinPEAS and LinPEAS" | tee -a "$log_file"
-download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/linpeas.sh
-download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx64.exe
-download_file https://github.com/peass-ng/PEASS-ng/releases/download/20240714-cd435bb2/winPEASx86.exe
+# WinPEAS and LinPEAS (clone repo instead of downloading specific versions)
+log "Installing PEASS-ng suite"
+if git_clone https://github.com/peass-ng/PEASS-ng.git; then
+    log "PEASS-ng cloned - you can find the latest releases in /opt/tools/PEASS-ng"
+else
+    log_error "Failed to clone PEASS-ng"
+fi
 
 # LinEnum
-echo "Installing LinEnum" | tee -a "$log_file"
+log "Installing LinEnum"
 git_clone https://github.com/rebootuser/LinEnum.git
 
 # Responder
-echo "Installing Responder" | tee -a "$log_file"
+log "Installing Responder"
 git_clone https://github.com/lgandx/Responder.git
 
 # DNScan
-echo "Installing dnscan" | tee -a "$log_file"
-git_clone https://github.com/rbsec/dnscan.git
-pip3 install -r dnscan/requirements.txt | tee -a "$log_file"
+log "Installing dnscan"
+if git_clone https://github.com/rbsec/dnscan.git; then
+    if [ -f dnscan/requirements.txt ]; then
+        cd dnscan || exit 1
+        pip_install -r requirements.txt || log_warning "Failed to install dnscan requirements"
+        cd ..
+    fi
+fi
 
 # Evil-WinRM
-echo "Installing evil-winrm" | tee -a "$log_file"
-gem install evil-winrm | tee -a "$log_file"
+log "Installing evil-winrm"
+if gem install evil-winrm 2>&1 | tee -a "$log_file"; then
+    log "evil-winrm installed successfully"
+else
+    log_error "Failed to install evil-winrm"
+fi
 
 # Wifite2
-echo "Installing Wifite2" | tee -a "$log_file"
-git_clone https://github.com/kimocoder/wifite2.git
-pip3 install -r wifite2/requirements.txt | tee -a "$log_file"
+log "Installing Wifite2"
+if git_clone https://github.com/kimocoder/wifite2.git; then
+    if [ -f wifite2/requirements.txt ]; then
+        cd wifite2 || exit 1
+        pip_install -r requirements.txt || log_warning "Failed to install wifite2 requirements"
+        cd ..
+    fi
+fi
 
 # AutoRecon
-echo "Installing AutoRecon" | tee -a "$log_file"
-python3 -m pip install git+https://github.com/Tib3rius/AutoRecon.git | tee -a "$log_file"
+log "Installing AutoRecon"
+pip_install "git+https://github.com/Tib3rius/AutoRecon.git" || log_warning "AutoRecon installation failed"
 
 # CrackMapExec
-echo "Installing CrackMapExec" | tee -a "$log_file"
-apt-get install -y crackmapexec | tee -a "$log_file"
+log "Installing CrackMapExec"
+if apt-get install -y crackmapexec 2>&1 | tee -a "$log_file"; then
+    log "CrackMapExec installed successfully"
+else
+    log_warning "CrackMapExec not available in apt, you may need to install it manually"
+fi
 
-# SecLists
-echo "Installing SecLists" | tee -a "$log_file"
-git_clone https://github.com/danielmiessler/SecLists.git
+# SecLists (may already be installed via apt)
+log "Installing SecLists"
+if [ ! -d "/usr/share/seclists" ] && [ ! -d "SecLists" ]; then
+    git_clone https://github.com/danielmiessler/SecLists.git
+else
+    log "SecLists already available"
+fi
 
 # Fierce
-echo "Installing Fierce" | tee -a "$log_file"
-apt-get install -y fierce | tee -a "$log_file"
+log "Installing Fierce"
+if apt-get install -y fierce 2>&1 | tee -a "$log_file"; then
+    log "Fierce installed successfully"
+else
+    log_warning "Fierce installation failed"
+fi
 
 # FinalRecon
-echo "Installing FinalRecon" | tee -a "$log_file"
-git_clone https://github.com/thewhiteh4t/FinalRecon.git
-cd FinalRecon
-pip3 install -r requirements.txt | tee -a "$log_file"
-cd ..
+log "Installing FinalRecon"
+if git_clone https://github.com/thewhiteh4t/FinalRecon.git; then
+    if [ -f FinalRecon/requirements.txt ]; then
+        cd FinalRecon || exit 1
+        pip_install -r requirements.txt || log_warning "Failed to install FinalRecon requirements"
+        cd ..
+    fi
+fi
 
-echo "Build Script Complete" | tee -a "$log_file"
+log "==================================="
+log "Build Script Complete!"
+log "==================================="
+log "All tools have been installed to /opt/tools"
+log "Check the log file for details: $log_file"

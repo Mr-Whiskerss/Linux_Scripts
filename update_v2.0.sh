@@ -1,46 +1,80 @@
 #!/bin/bash
 
+# System update and upgrade script with user prompts
+# Safely updates repositories, upgrades packages, and cleans up unused packages
+
+set -e  # Exit on error
+
 # Enable case-insensitive matching for user inputs
 shopt -s nocasematch
 
-# Checking if script is running at root.
+# Checking if script is running as root
 if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root."
+    echo "ERROR: Please run as root."
     exit 1
 fi
 
 # Display the current sources list
+echo "=================================="
+echo "System Update Script"
+echo "=================================="
+echo
 echo "Current sources list:"
-cat /etc/apt/sources.list
+cat /etc/apt/sources.list 2>/dev/null || echo "Could not read sources.list"
 echo
 
 # Function to prompt user for confirmation and execute a command if confirmed
 prompt_and_execute() {
     local message="$1"
     local command="$2"
+    local input
 
-    echo "$message (Y/N)"
-    read input
+    while true; do
+        read -p "$message (y/n): " input
 
-    if [[ "$input" == *"y"* ]]; then
-        eval "$command"
-    elif [[ "$input" == *"n"* ]]; then
-        echo "Skipping..."
-    else
-        echo "Invalid input. Please enter Y or N."
-    fi
+        case "$input" in
+            y|Y|yes|Yes|YES)
+                echo "Executing: $command"
+                if $command; then
+                    echo "Success!"
+                else
+                    echo "ERROR: Command failed with exit code $?"
+                    return 1
+                fi
+                return 0
+                ;;
+            n|N|no|No|NO)
+                echo "Skipping..."
+                return 0
+                ;;
+            *)
+                echo "Invalid input. Please enter 'y' or 'n'."
+                ;;
+        esac
+    done
 }
 
 # Check if you want to update repos
-prompt_and_execute "Do you want to update the repositories?" "apt update"
+echo
+prompt_and_execute "Do you want to update the repositories?" "apt-get update"
 
 # Check if you want to upgrade packages
-prompt_and_execute "Do you want to upgrade installed packages?" "apt -y upgrade"
+echo
+prompt_and_execute "Do you want to upgrade installed packages?" "apt-get upgrade -y"
 
 # Check if you want to perform a distribution upgrade
-prompt_and_execute "Do you want to perform a distribution upgrade?" "apt -y dist-upgrade"
+echo
+prompt_and_execute "Do you want to perform a distribution upgrade?" "apt-get dist-upgrade -y"
 
 # Checking if you want to remove unused packages
-prompt_and_execute "Do you want to auto-remove unused packages?" "apt-get -y autoremove"
+echo
+prompt_and_execute "Do you want to auto-remove unused packages?" "apt-get autoremove -y"
 
-echo "Update process completed."
+# Check if you want to clean apt cache
+echo
+prompt_and_execute "Do you want to clean apt cache?" "apt-get clean"
+
+echo
+echo "=================================="
+echo "Update process completed!"
+echo "=================================="
