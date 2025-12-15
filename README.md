@@ -3,48 +3,47 @@
 
 
 
-Linux Scripts
-Welcome to the Linux Scripts repository I have created over my time as a pen tester.
-This is a collection of Bash scripts designed to automate common tasks encountered while working with Linux systems, particularly in penetration testing and system administration.
+# Linux Scripts
 
-Feel free to clone, use, modify, and contribute to these scripts!
+A collection of Bash scripts for penetration testing and Linux system administration, built from real-world engagements and daily use.
 
-📂 Repository Contents
+## Scripts
 
-*Network_ConfigurationV3.sh*
-Configure network settings easily with this script, including IP assignment and DNS setup. This is a great script for pen test exams or on site testing when you need to custom set your IP and DNS.
+| Script | Description |
+|--------|-------------|
+| **Network_ConfigurationV3.sh** | Configure IP address and DNS settings manually. Ideal for pentest exams or on-site engagements where DHCP isn't available or you need a specific network config. |
+| **Python_configurator.sh** | Set up Python 2 and Python 3 development environments with required dependencies. |
+| **build_script.sh** | Bootstrap a fresh Linux install with common pentesting tools and configurations. Personal go-to for new VM builds. |
+| **update_v2.0.sh** | Quick system update script for Debian-based distributions (apt update, upgrade, autoremove). |
 
-*Python_configurator.sh*
-A script to set up a basic Python development environment on Linux, installing necessary tools and dependencies. This script will set up python 2 and 3 environments if that is something you need.
+## Quick Start
 
-*build_script.sh*
-Automates the installation of common tools and updates for a fresh Linux machine setup. My personal go to build script when working on fresh linux installs. 
-
-*update_v2.0.sh*
-A streamlined system update script for keeping your Linux environment up to date with the latest packages. A quick up date script for updating Debian based linux systems.
-
-🚀 Getting Started
-Clone the repository:
-```
+```bash
+# Clone the repository
 git clone https://github.com/Mr-Whiskerss/Linux_Scripts.git
 cd Linux_Scripts
-```
-Make the scripts executable:
-```
-chmod +x *.sh
-Run a script:
-```
 
-Running the script
-```
+# Make scripts executable
+chmod +x *.sh
+
+# Run a script
 ./script_name.sh
 ```
 
-🛠️ Requirements
-A Linux-based system
-bash shell
-Sudo privileges for some scripts (e.g., system updates or network configuration)
+## Requirements
 
-⚡ Usage Notes
-Scripts are intended for personal use, learning, and automation. Always review scripts before running them in production environments. Customize scripts as needed for your specific environment! They are free after all!
+- Linux (Debian-based for update scripts)
+- Bash shell
+- Sudo privileges (required for network config, package installation, and updates)
 
+## ⚠️ Disclaimer
+
+These scripts are provided as-is for personal use and learning. Always review scripts before running them, especially in production environments. Modify as needed for your setup.
+
+## Contributing
+
+Pull requests and suggestions welcome. Feel free to fork, modify, and share.
+
+## License
+
+Free to use and modify.
