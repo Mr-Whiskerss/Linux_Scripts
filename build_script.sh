@@ -356,9 +356,28 @@ else
     record_status "AutoRecon" "failed"
 fi
 
-# CrackMapExec
-apt_install_tracked "crackmapexec" "crackmapexec" "crackmapexec" \
-    || log_warning "CrackMapExec not available in apt, you may need to install it manually"
+# NetExec (nxc) - maintained successor to the now-abandoned CrackMapExec.
+log "Installing NetExec (nxc)"
+if have_cmd nxc || have_cmd netexec; then
+    log_warning "NetExec already present, skipping"
+    record_status "NetExec (nxc)" "present"
+elif apt-get install -y netexec 2>&1 | tee -a "$log_file"; then
+    # Available natively in Kali and some other security distros
+    log "NetExec installed successfully (via apt)"
+    record_status "NetExec (nxc)" "installed"
+else
+    # Project-recommended method: pipx install from the GitHub repo
+    log_warning "netexec not available via apt, falling back to pipx (recommended method)"
+    apt-get install -y pipx git 2>&1 | tee -a "$log_file" || log_warning "Failed to install pipx prerequisite"
+    pipx ensurepath 2>&1 | tee -a "$log_file" || true
+    if pipx install git+https://github.com/Pennyw0rth/NetExec 2>&1 | tee -a "$log_file"; then
+        log "NetExec installed successfully (via pipx) - open a new shell to pick up the PATH change"
+        record_status "NetExec (nxc)" "installed"
+    else
+        log_error "Failed to install NetExec"
+        record_status "NetExec (nxc)" "failed"
+    fi
+fi
 
 # SecLists (may already be installed via apt or cloned here)
 log "Installing SecLists"
