@@ -15,6 +15,7 @@ A collection of Bash scripts for penetration testing and Linux system administra
 | **Python_configurator.sh** | Set up Python 2 and Python 3 development environments with required dependencies. |
 | **build_script.sh** | Bootstrap a fresh Linux install with common pentesting tools and configurations. Personal go-to for new VM builds. |
 | **update_v2.0.sh** | Quick system update script for Debian-based distributions (apt update, upgrade, autoremove). |
+| **Auto_cleanup.sh** | Quick clean up system script for Debian-based distributions |
 
 ## Quick Start
 
