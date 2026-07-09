@@ -1,6 +1,18 @@
 #!/bin/bash
 # This script sets up essential tools for Linux pentesting and system preparation when on a new build or need to get something up and ready quick. Please run as root.
-# Version 4.2
+# Version 5.0
+#
+# v5.0 changelog (tools added to match an internal/AD + web pentest workflow):
+#   * New helpers: pipx_install_tracked, install_github_release_bin, apt_install_many
+#   * Active Directory / internal: BloodHound CE ingestor, Certipy, kerbrute,
+#     ldapdomaindump, mitm6, Coercer, PCredz, adidnsdump, targetedKerberoast,
+#     DonPAPI, gMSADumper, pywerview
+#   * Recon / content discovery: ffuf, feroxbuster, gobuster, nuclei, httpx,
+#     subfinder, dnsx, katana, gowitness, amass, masscan, rustscan
+#   * Web: sqlmap, nikto, whatweb, wpscan, dalfox, arjun
+#   * Credentials / cracking: hashcat, john, hcxtools, hcxdumptool
+#   * Pivoting / tunnelling: chisel, ligolo-ng, sshuttle, proxychains4, socat
+#   * Quality-of-life: tmux, jq, ripgrep, fzf, bat, golang-go, pipx, net tooling
 
 set -e  # Exit immediately if a command exits with a non-zero status
 set -o pipefail  # Catch errors in pipelines
@@ -26,7 +38,7 @@ log_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$log_file"
 }
 
-log "Welcome to the Build Script v4.2"
+log "Welcome to the Build Script v5.0"
 
 # Check if the script is running as root
 if [ "$EUID" -ne 0 ]; then
@@ -35,6 +47,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 log "Root check passed"
+
+# The user who invoked sudo, so pipx installs land in a real user profile
+# instead of root's. Falls back to root if the script is run as root directly.
+TARGET_USER="${SUDO_USER:-root}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+[ -z "$TARGET_HOME" ] && TARGET_HOME="/root"
 
 # =====================================================================
 # Installation status tracking
@@ -107,6 +125,17 @@ apt_install_tracked() {
     fi
 }
 
+# Convenience wrapper for installing a flat list of apt packages where the
+# package name and the command/check name are identical. Each gets its own
+# checklist line and already-present ones are skipped.
+# usage: apt_install_many pkg1 pkg2 pkg3 ...
+apt_install_many() {
+    local pkg
+    for pkg in "$@"; do
+        apt_install_tracked "$pkg" "$pkg" "$pkg" || true
+    done
+}
+
 # Function to clone and check git repositories (with status tracking).
 git_clone() {
     local repo_url=$1
@@ -169,6 +198,43 @@ pip_install() {
             log_error "Failed to install $package"
             return 1
         fi
+    fi
+}
+
+# Install a Python CLI tool in its own isolated environment with pipx.
+# This is the project-recommended method for most modern AD/pentest tooling
+# (impacket-based tools, certipy, coercer, etc.) and avoids polluting the
+# system Python. Tools are installed for $TARGET_USER so they land on that
+# user's PATH rather than root's.
+# usage: pipx_install_tracked "Display Name" "spec" [check_cmd]
+#   spec      : anything pipx accepts, e.g. "certipy-ad" or "git+https://..."
+#   check_cmd : optional command name used to detect an existing install
+pipx_install_tracked() {
+    local name=$1 spec=$2 check=$3
+
+    if [ -n "$check" ] && have_cmd "$check"; then
+        log_warning "$name already present, skipping install"
+        record_status "$name" "present"
+        return 0
+    fi
+
+    # Make sure pipx itself is available.
+    if ! have_cmd pipx; then
+        log "pipx not found, installing prerequisite"
+        apt-get install -y pipx 2>&1 | tee -a "$log_file" || log_warning "Failed to install pipx"
+    fi
+
+    log "Installing $name via pipx ($spec)"
+    # Run pipx as the invoking user so the venv/bin live in their home.
+    if sudo -u "$TARGET_USER" -H bash -lc "pipx install '$spec'" 2>&1 | tee -a "$log_file"; then
+        sudo -u "$TARGET_USER" -H bash -lc "pipx ensurepath" 2>&1 | tee -a "$log_file" || true
+        log "$name installed successfully (via pipx)"
+        record_status "$name" "installed"
+        return 0
+    else
+        log_error "Failed to install $name via pipx"
+        record_status "$name" "failed"
+        return 1
     fi
 }
 
@@ -235,11 +301,85 @@ install_github_deb() {
     fi
 }
 
+# Install a single static binary from a GitHub project's latest release.
+# Finds the first asset matching <pattern>, downloads it, extracts it if it is
+# a tar/zip, then drops the resulting executable into /usr/local/bin/<binname>.
+# Great for Go tools that ship a single static binary (kerbrute, chisel, ligolo).
+# usage: install_github_release_bin <repo> <pattern> <name> <binname> [inner_match]
+#   pattern     : regex matching the release asset (e.g. 'linux_amd64\.tar\.gz$')
+#   binname     : final command name to place in /usr/local/bin
+#   inner_match : optional substring to pick the right file out of an archive
+install_github_release_bin() {
+    local repo=$1 pattern=$2 name=$3 binname=$4 inner_match=$5
+
+    if have_cmd "$binname"; then
+        log_warning "$name already present, skipping install"
+        record_status "$name" "present"
+        return 0
+    fi
+
+    log "Fetching latest release info for $name ($repo)"
+    local api_url="https://api.github.com/repos/${repo}/releases/latest"
+    local asset_url
+    asset_url=$(curl -fsSL "$api_url" \
+        | grep -oP '"browser_download_url"\s*:\s*"\K[^"]*' \
+        | grep -E "$pattern" \
+        | head -n1)
+
+    if [ -z "$asset_url" ]; then
+        log_error "Could not find a release asset for $name matching /$pattern/"
+        record_status "$name" "failed"
+        return 1
+    fi
+
+    local tmp
+    tmp=$(mktemp -d)
+    local asset_file="$tmp/$(basename "$asset_url")"
+
+    if ! wget -q --show-progress -O "$asset_file" "$asset_url" 2>&1 | tee -a "$log_file"; then
+        log_error "Failed to download $name"
+        record_status "$name" "failed"
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    local bin_src=""
+    case "$asset_file" in
+        *.tar.gz|*.tgz) tar -xzf "$asset_file" -C "$tmp" ;;
+        *.zip)          unzip -o -q "$asset_file" -d "$tmp" ;;
+        *)              bin_src="$asset_file" ;;  # raw binary
+    esac
+
+    # Locate the executable inside the extracted tree.
+    if [ -z "$bin_src" ]; then
+        if [ -n "$inner_match" ]; then
+            bin_src=$(find "$tmp" -type f -name "*$inner_match*" ! -name "*.tar*" ! -name "*.zip" | head -n1)
+        else
+            # Prefer a file whose name looks like the binary; else first executable.
+            bin_src=$(find "$tmp" -type f \( -name "$binname" -o -name "${binname}*" \) ! -name "*.tar*" ! -name "*.zip" | head -n1)
+            [ -z "$bin_src" ] && bin_src=$(find "$tmp" -maxdepth 2 -type f -perm -u+x ! -name "*.tar*" ! -name "*.zip" | head -n1)
+        fi
+    fi
+
+    if [ -z "$bin_src" ] || [ ! -f "$bin_src" ]; then
+        log_error "Could not locate the $binname binary inside the $name release asset"
+        record_status "$name" "failed"
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    install -m 0755 "$bin_src" "/usr/local/bin/$binname"
+    log "$name installed successfully to /usr/local/bin/$binname"
+    record_status "$name" "installed"
+    rm -rf "$tmp"
+    return 0
+}
+
 # Install common tools
 log "==================================="
 log "Installing Common Tools"
 log "==================================="
-COMMON_TOOLS="htop iftop python3-pip seclists terminator rubygems curl wget"
+COMMON_TOOLS="htop iftop python3-pip pipx seclists terminator rubygems curl wget unzip jq git tmux ripgrep fzf bat golang-go net-tools dnsutils socat"
 
 # Python 2 is EOL, only install if available (might not be in newer distros)
 if apt-cache show python2 &>/dev/null; then
@@ -400,6 +540,119 @@ if git_clone https://github.com/thewhiteh4t/FinalRecon.git; then
         cd ..
     fi
 fi
+
+# =====================================================================
+# Active Directory / Internal network tooling
+# =====================================================================
+# Rounds out the AD kill-chain that your Active_Directory_Attack_Checker /
+# NXC_Host_Gen workflow already leans on: enumeration -> coercion/relay ->
+# AD CS abuse -> BloodHound analysis.
+log "==================================="
+log "Installing Active Directory / Internal Tools"
+log "==================================="
+cd /opt/tools || exit 1
+
+# Prefer Kali's packaged versions where they exist; fall back to pipx/git.
+apt_install_many ldapdomaindump mitm6 bloodhound.py smbmap
+
+# Certipy - AD Certificate Services (ADCS) enumeration & ESC1-ESC16 abuse.
+if ! apt_install_tracked "Certipy" "certipy" certipy-ad; then
+    pipx_install_tracked "Certipy" "certipy-ad" "certipy" || true
+fi
+
+# BloodHound.py ingestor (collects AD data for the BloodHound GUI/CE).
+if ! have_cmd bloodhound-python; then
+    pipx_install_tracked "BloodHound.py ingestor" "bloodhound" "bloodhound-python" || true
+fi
+
+# Coercer - automated authentication coercion (PetitPotam/PrinterBug/etc.).
+pipx_install_tracked "Coercer" "coercer" "coercer" || true
+
+# adidnsdump - AD-integrated DNS zone dumping over LDAP.
+pipx_install_tracked "adidnsdump" "adidnsdump" "adidnsdump" || true
+
+# DonPAPI - remote DPAPI secret harvesting (creds, cookies, certs).
+pipx_install_tracked "DonPAPI" "donpapi" "donpapi" || true
+
+# pywerview - Python PowerView for LDAP-based AD recon.
+pipx_install_tracked "pywerview" "pywerview" "pywerview" || true
+
+# kerbrute - fast Kerberos user enumeration & password spraying.
+install_github_release_bin "ropnop/kerbrute" 'linux_amd64$' "kerbrute" "kerbrute" || \
+    log_warning "kerbrute install failed - grab it from https://github.com/ropnop/kerbrute/releases"
+
+# PCredz - credential extraction from live traffic / pcap (pairs with Responder).
+log "Installing PCredz"
+apt-get install -y libpcap-dev python3-pip 2>&1 | tee -a "$log_file" || true
+if git_clone https://github.com/lgandx/PCredz.git; then
+    pip_install Cython || true
+    pip_install python-libpcap || log_warning "PCredz dependency python-libpcap failed"
+fi
+
+# targetedKerberoast - roast accounts you can write to (RBCD/shadow creds combos).
+git_clone https://github.com/ShutdownRepo/targetedKerberoast.git || true
+
+# gMSADumper - dump gMSA managed passwords.
+git_clone https://github.com/micahvandeusen/gMSADumper.git || true
+
+# =====================================================================
+# Recon / content discovery
+# =====================================================================
+# Modern web + infra recon to back your Web-Application-Enumeration workflow.
+# Almost all of these are packaged in Kali; apt-first keeps them upgradable.
+log "==================================="
+log "Installing Recon / Content Discovery Tools"
+log "==================================="
+cd /opt/tools || exit 1
+
+apt_install_many nmap masscan gobuster ffuf feroxbuster nikto whatweb wpscan \
+    amass dnsrecon sqlmap dirb
+
+# ProjectDiscovery suite (nuclei is the big one; templates auto-update on first run).
+# Kali packages httpx as "httpx-toolkit" to avoid clashing with the python httpx lib.
+apt_install_tracked "nuclei" "nuclei" nuclei || true
+apt_install_tracked "httpx (ProjectDiscovery)" "httpx" httpx-toolkit || true
+apt_install_tracked "subfinder" "subfinder" subfinder || true
+apt_install_tracked "dnsx" "dnsx" dnsx || true
+apt_install_tracked "katana" "katana" katana || true
+apt_install_tracked "gowitness" "gowitness" gowitness || true
+apt_install_tracked "dalfox" "dalfox" dalfox || true
+
+# Arjun - HTTP parameter discovery.
+pipx_install_tracked "Arjun" "arjun" "arjun" || true
+
+# rustscan - very fast port scanner that hands off to nmap.
+if ! have_cmd rustscan; then
+    install_github_deb "bee-san/RustScan" 'amd64.*\.deb$' "RustScan" "rustscan" || \
+        log_warning "RustScan install failed - see https://github.com/bee-san/RustScan/releases"
+fi
+
+# =====================================================================
+# Credentials / password cracking
+# =====================================================================
+log "==================================="
+log "Installing Credential / Cracking Tools"
+log "==================================="
+
+apt_install_many hashcat john hydra hcxtools hcxdumptool
+
+# =====================================================================
+# Pivoting / tunnelling
+# =====================================================================
+log "==================================="
+log "Installing Pivoting / Tunnelling Tools"
+log "==================================="
+cd /opt/tools || exit 1
+
+apt_install_many proxychains4 sshuttle chisel
+
+# ligolo-ng - modern tunnelling/pivoting (agent + proxy). Grab both binaries.
+install_github_release_bin "nicocha30/ligolo-ng" 'proxy.*linux_amd64\.tar\.gz$' \
+    "ligolo-ng (proxy)" "ligolo-proxy" "proxy" || \
+    log_warning "ligolo-ng proxy install failed - see https://github.com/nicocha30/ligolo-ng/releases"
+install_github_release_bin "nicocha30/ligolo-ng" 'agent.*linux_amd64\.tar\.gz$' \
+    "ligolo-ng (agent)" "ligolo-agent" "agent" || \
+    log_warning "ligolo-ng agent install failed (Windows/target agent can be built as needed)"
 
 # =====================================================================
 # GUI / Productivity Tools
